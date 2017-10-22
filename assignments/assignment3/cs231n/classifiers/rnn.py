@@ -74,7 +74,6 @@ class CaptioningRNN(object):
         for k, v in self.params.items():
             self.params[k] = v.astype(self.dtype)
 
-
     def loss(self, features, captions):
         """
         Compute training-time loss for the RNN. We input image features and
@@ -137,13 +136,37 @@ class CaptioningRNN(object):
         # defined above to store loss and gradients; grads[k] should give the      #
         # gradients for self.params[k].                                            #
         ############################################################################
-        pass
+        h0 = np.dot(features, W_proj) + b_proj
+        words, embed_cache = word_embedding_forward(captions_in, W_embed)
+        if self.cell_type == 'rnn':
+            h, rnn_cache = rnn_forward(words, h0, Wx, Wh, b)
+        elif self.cell_type == 'lstm':
+            h, rnn_cache = lstm_forward(words, h0, Wx, Wh, b)
+        else:
+            raise Exception()
+        out, affine_cache = temporal_affine_forward(h, W_vocab, b_vocab)
+        loss, dout = temporal_softmax_loss(out, captions_out, mask)
+
+        dh, dW_vocab, db_vocab = temporal_affine_backward(dout, affine_cache)
+        if self.cell_type == 'rnn':
+            dwords, dh0, dWx, dWh, db = rnn_backward(dh, rnn_cache)
+        elif self.cell_type == 'lstm':
+            dwords, dh0, dWx, dWh, db = lstm_backward(dh, rnn_cache)
+        dW_embed = word_embedding_backward(dwords, embed_cache)
+        dW_proj = np.dot(features.T, dh0)
+        db_proj = np.sum(dh0, axis=0)
+        grads['W_proj'] = dW_proj
+        grads['b_proj'] = db_proj
+        grads['W_embed'] = dW_embed
+        grads['Wx'] = dWx
+        grads['Wh'] = dWh
+        grads['b'] = db
+        grads['W_vocab'] = dW_vocab
+        grads['b_vocab'] = db_vocab
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
-
         return loss, grads
-
 
     def sample(self, features, max_length=30):
         """
@@ -199,7 +222,19 @@ class CaptioningRNN(object):
         # functions; you'll need to call rnn_step_forward or lstm_step_forward in #
         # a loop.                                                                 #
         ###########################################################################
-        pass
+        h0 = np.dot(features, W_proj) + b_proj
+        c = np.zeros_like(h0)
+        target = np.array([self._start] * N)
+        for t in range(max_length):
+            embed_target = W_embed[target]
+            if self.cell_type == 'rnn':
+                h0, _ = rnn_step_forward(embed_target, h0, Wx, Wh, b)
+            elif self.cell_type == 'lstm':
+                h0, c, _ = lstm_step_forward(embed_target, h0, c, Wx, Wh, b)
+            scores = np.dot(h0, W_vocab) + b_vocab
+            idx = scores.argmax(axis=1)
+            captions[:, t] = idx
+            target = idx
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################

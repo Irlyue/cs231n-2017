@@ -1,6 +1,4 @@
 from __future__ import print_function
-from future import standard_library
-standard_library.install_aliases()
 from builtins import range
 import urllib.request, urllib.error, urllib.parse, os, tempfile
 
